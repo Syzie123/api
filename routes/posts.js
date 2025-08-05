@@ -54,10 +54,11 @@ router.post('/create', async (req, res) => {
     });
     
     res.status(201).json({
-      error: false,
+      success: true,
       message: 'Post created successfully',
       data: {
-        postId: postRef.id
+        ...postData,
+        _id: postData.postId // Ensure _id is available for compatibility
       }
     });
   } catch (error) {
@@ -379,7 +380,13 @@ router.get('/feed', async (req, res) => {
     }
     
     const postsSnapshot = await query.get();
-    const posts = postsSnapshot.docs.map(doc => doc.data());
+    const posts = postsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        _id: data.postId || doc.id // Ensure _id is available for compatibility
+      };
+    });
     
     res.status(200).json({
       success: true,
@@ -426,7 +433,13 @@ router.get('/user/:userId', async (req, res) => {
     }
     
     const postsSnapshot = await query.get();
-    const posts = postsSnapshot.docs.map(doc => doc.data());
+    const posts = postsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        _id: data.postId || doc.id // Ensure _id is available for compatibility
+      };
+    });
     
     res.status(200).json({
       success: true,
@@ -653,7 +666,10 @@ router.post('/direct-create', async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Post created successfully via direct method',
-      data: postData
+      data: {
+        ...postData,
+        _id: postData.postId // Ensure _id is available for compatibility
+      }
     });
   } catch (error) {
     console.error('Error creating post directly:', error);
@@ -717,7 +733,10 @@ router.post('/simple-create', async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Post created successfully via simple method',
-      data: postData
+      data: {
+        ...postData,
+        _id: postData.postId // Ensure _id is available for compatibility
+      }
     });
   } catch (error) {
     console.error('Error creating simple post:', error);
@@ -757,7 +776,11 @@ router.get('/by-user/:userId', async (req, res) => {
         try {
           const postDoc = await collections.posts.doc(postId).get();
           if (postDoc.exists) {
-            userPosts.push(postDoc.data());
+            const data = postDoc.data();
+            userPosts.push({
+              ...data,
+              _id: data.postId || postId // Ensure _id is available for compatibility
+            });
           }
         } catch (e) {
           console.error(`Error fetching post ${postId}:`, e);
