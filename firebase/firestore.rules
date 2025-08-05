@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isAdmin == true;
+    }
+    
+    function isFollowing(followerId, followingId) {
+      return exists(/databases/$(database)/documents/follows/$(followerId)_$(followingId));
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Anyone can read basic user data
+      allow read: if isAuthenticated();
+      
+      // Only the user can update their own data
+      allow update: if isOwner(userId);
+      
+      // Only the system or admin can create/delete users
+      allow create, delete: if isAdmin();
+    }
+    
+    // Posts collection
+    match /posts/{postId} {
+      // Anyone can read posts
+      allow read: if isAuthenticated();
+      
+      // Only the owner can create, update, or delete their posts
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // Comments collection
+    match /comments/{commentId} {
+      // Anyone can read comments
+      allow read: if isAuthenticated();
+      
+      // Only the authenticated user can create comments
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      
+      // Only the comment owner can update or delete their comments
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // Stories collection
+    match /stories/{storyId} {
+      // Anyone authenticated can read stories
+      allow read: if isAuthenticated();
+      
+      // Only the owner can create stories
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      
+      // Only the owner can update or delete their stories
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // Chats collection
+    match /chats/{chatId} {
+      // Only participants can read the chat
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      
+      // Anyone authenticated can create a chat
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      
+      // Only participants can update the chat
+      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      
+      // No one can delete chats directly (handled by server)
+      allow delete: if false;
+    }
+    
+    // Messages collection
+    match /messages/{messageId} {
+      // Only participants of the chat can read messages
+      allow read: if isAuthenticated() && 
+        request.auth.uid in get(/databases/$(database)/documents/chats/$(resource.data.chatId)).data.participants;
+      
+      // Only authenticated users can create messages in chats they participate in
+      allow create: if isAuthenticated() && 
+        request.auth.uid in get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.participants &&
+        request.resource.data.senderId == request.auth.uid;
+      
+      // Only the sender can update their messages
+      allow update: if isOwner(resource.data.senderId);
+      
+      // No one can delete messages directly (handled by server)
+      allow delete: if false;
+    }
+    
+    // Follows collection
+    match /follows/{followId} {
+      // Anyone can read follow relationships
+      allow read: if isAuthenticated();
+      
+      // Only the follower can create or delete the follow relationship
+      allow create: if isAuthenticated() && 
+        request.resource.data.followerId == request.auth.uid;
+      
+      allow delete: if isAuthenticated() && 
+        resource.data.followerId == request.auth.uid;
+      
+      // No updates to follow relationships
+      allow update: if false;
+    }
+    
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Only the recipient can read their notifications
+      allow read: if isOwner(resource.data.userId);
+      
+      // Only the system can create notifications
+      allow create: if false;
+      
+      // Only the recipient can mark notifications as read
+      allow update: if isOwner(resource.data.userId) && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      
+      // No one can delete notifications directly (handled by server)
+      allow delete: if false;
+    }
+    
+    // Admins collection (restricted)
+    match /admins/{adminId} {
+      // Only admins can read the admin list
+      allow read: if isAdmin();
+      
+      // No one can modify the admin list through client
+      allow write: if false;
+    }
+  }
+} 

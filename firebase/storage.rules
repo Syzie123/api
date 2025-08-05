@@ -1,0 +1,70 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    function isValidVideo() {
+      return request.resource.contentType.matches('video/.*');
+    }
+    
+    function isValidSize() {
+      // Limit file size to 20MB
+      return request.resource.size <= 20 * 1024 * 1024;
+    }
+    
+    // Profile images
+    match /profiles/{userId}/{fileName} {
+      // Anyone can read profile images
+      allow read: if true;
+      
+      // Only the owner can upload their profile image
+      allow write: if isOwner(userId) && isValidImage() && isValidSize();
+    }
+    
+    // Post media
+    match /posts/{userId}/{fileName} {
+      // Anyone can read post media
+      allow read: if true;
+      
+      // Only the owner can upload their post media
+      allow write: if isOwner(userId) && (isValidImage() || isValidVideo()) && isValidSize();
+    }
+    
+    // Story media
+    match /stories/{userId}/{fileName} {
+      // Anyone authenticated can read story media
+      allow read: if isAuthenticated();
+      
+      // Only the owner can upload their story media
+      allow write: if isOwner(userId) && (isValidImage() || isValidVideo()) && isValidSize();
+    }
+    
+    // Chat attachments
+    match /chats/{chatId}/{fileName} {
+      // Only participants can read chat attachments
+      // This requires a Firestore lookup to verify chat participants
+      allow read: if isAuthenticated() && exists(/databases/$(database)/documents/chats/$(chatId)/participants/$(request.auth.uid));
+      
+      // Only participants can upload chat attachments
+      allow write: if isAuthenticated() && 
+                    exists(/databases/$(database)/documents/chats/$(chatId)/participants/$(request.auth.uid)) && 
+                    isValidSize();
+    }
+    
+    // Default: deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+} 
